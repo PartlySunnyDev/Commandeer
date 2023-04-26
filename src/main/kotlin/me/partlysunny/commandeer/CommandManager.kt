@@ -1,8 +1,8 @@
 package me.partlysunny.commandeer
 
 import me.partlysunny.commandeer.annotations.*
+import net.kyori.adventure.text.minimessage.MiniMessage
 import org.bukkit.Bukkit
-import org.bukkit.ChatColor
 import org.bukkit.command.*
 import org.bukkit.command.Command
 import org.bukkit.entity.Player
@@ -87,8 +87,14 @@ class CommandManager(plugin: Plugin) : CommandExecutor, TabCompleter {
         val parentCommand = mainPlugin.server.getPluginCommand(subcommand.parent)
         // If parent command is null, throw an exception
         if (parentCommand == null) {
-            mainPlugin.logger.log(Level.SEVERE, "Issue registering subcommand ${subcommand.commandName}! Parent command ${subcommand.parent} does not exist!")
-            mainPlugin.logger.log(Level.SEVERE, "Possible fix: Make sure the parent command is registered before the subcommand!")
+            mainPlugin.logger.log(
+                Level.SEVERE,
+                "Issue registering subcommand ${subcommand.commandName}! Parent command ${subcommand.parent} does not exist!"
+            )
+            mainPlugin.logger.log(
+                Level.SEVERE,
+                "Possible fix: Make sure the parent command is registered before the subcommand!"
+            )
             return true
         }
         // Add the subcommand to the subcommands map
@@ -241,7 +247,7 @@ class CommandManager(plugin: Plugin) : CommandExecutor, TabCompleter {
         if (sender is Player) {
             for (permission in perms) {
                 if (!sender.hasPermission(permission.first)) {
-                    sender.sendMessage("${ChatColor.RED}${permission.second}")
+                    sender.sendMessage(MiniMessage.miniMessage().deserialize("<red>${permission.second}"))
                     return false
                 }
             }
@@ -250,145 +256,130 @@ class CommandManager(plugin: Plugin) : CommandExecutor, TabCompleter {
     }
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
-        //ConsoleLogger.console("Command cooldowns: $commandCurrentCooldowns")
-        //ConsoleLogger.console("Subcommand cooldowns: $subcommandCurrentCooldowns")
         // If the command has subcommands then check if the first argument is a subcommand
         if (subcommands.containsKey(command)) {
-            if (args.isNotEmpty()) {
-                // This means a subcommand was used, find the subcommand and execute it
-                if (subcommands[command]!!.containsKey(args[0])) {
-                    val subcommand = subcommands[command]!![args[0]]!!
-                    //
-                    // ----------- COOLDOWN LOGIC ------------
-                    //
-                    // Denotes whether this subcommand has its own cooldown or not
-                    // If it doesn't, it will inherit the cooldown from the parent command
-                    var doesHaveSubcommandCooldown = subcommandCooldowns.containsKey(command)
-                    if (doesHaveSubcommandCooldown) {
-                        val cooldown = subcommandCooldowns[command]!![args[0]]
-                        // Check if the sender is a player
-                        if (sender is Player) {
-                            if (cooldown != null) {
-                                //Get the player cooldowns
-                                if (!subcommandCurrentCooldowns.containsKey(sender.uniqueId)) {
-                                    subcommandCurrentCooldowns[sender.uniqueId] =
-                                        mutableMapOf(command to mutableMapOf())
-                                }
-                                val playerCooldowns = subcommandCurrentCooldowns[sender.uniqueId]!![command]!!
-                                // Check if the player has a cooldown
-                                if (playerCooldowns.containsKey(subcommand.first.name)) {
-                                    // Check if the cooldown has expired
-                                    if (playerCooldowns[subcommand.first.name]!! > System.currentTimeMillis()) {
-                                        sender.sendMessage("${ChatColor.RED}${cooldown.second}")
-                                        return true
-                                    }
-                                }
-                                // If the player doesn't have a cooldown, add one
-                                playerCooldowns[subcommand.first.name] = System.currentTimeMillis() + cooldown!!.first
-                            } else {
-                                doesHaveSubcommandCooldown = false
-                            }
-                        }
-                    }
-                    // If not then inherit the parent's cooldown
-                    if (!doesHaveSubcommandCooldown && commandCooldowns.containsKey(command) && sender is Player) {
-                        if (handleCommandCooldowns(command, sender)) return true
-                    }
-
-                    // Check for arg bounds if the wrong amount of arguments was provided
-                    if (subcommandArgBounds.containsKey(command)) {
-                        if (subcommandArgBounds[command]!!.containsKey(args[0])) {
-                            val bounds = subcommandArgBounds[command]!![args[0]]!!
-                            if (args.size - 1 < bounds.first || args.size - 1 > bounds.second) {
-                                sender.sendMessage("${ChatColor.RED}${bounds.third}")
-                                return true
-                            }
-                        }
-                    }
-                    val commandArgs =
-                        CommandArgs(sender, subcommand.first, args[0], args.slice(1 until args.size).toTypedArray())
-                    // Check permissions
-                    if (
-                        !subcommandPermissions.containsKey(command) ||
-                        !subcommandPermissions[command]!!.containsKey(subcommand.first.name) ||
-                        permissionCheck(sender, subcommandPermissions[command]!![subcommand.first.name]!!)
-                    ) {
-                        // Execute the subcommand
-                        subcommand.second.invoke(subcommand.third, commandArgs)
-                    }
-                } else {
-                    sender.sendMessage("${ChatColor.RED}Invalid subcommand!")
-                }
-            }
+            // This means a subcommand was used, find the subcommand and execute it
+            if (args.isNotEmpty()) performChecksAndExecuteSubcommand(command, args, sender)
             // This means that a subcommand was not used, so execute the parent command normally
-            else {
-                val commandArgs = CommandArgs(sender, command, label, args)
-                val commandInfo = commands[command]!!
-                // Check for cooldowns
-                if (commandCooldowns.containsKey(command) && sender is Player) {
-                    if (handleCommandCooldowns(command, sender)) return true
-                }
-                // Check for arg bounds if the wrong amount of arguments was provided
-                if (commandArgBounds.containsKey(command)) {
-                    val bounds = commandArgBounds[command]!!
-                    if (args.size < bounds.first || args.size > bounds.second) {
-                        sender.sendMessage("${ChatColor.RED}${bounds.third}")
-                        return true
-                    }
-                }
-                // Check permissions
-                if (!commandPermissions.containsKey(command) || permissionCheck(
-                        sender,
-                        commandPermissions[command]!!
-                    )
-                ) {
-                    JavaAccessor.invoke(commandInfo.second, commandInfo.first, commandArgs)
-                }
-            }
+            else performChecksAndExecuteCommand(sender, command, label, args)
         } else {
             // If the command does not have subcommands, execute it normally, but with arguments
-            if (commands.containsKey(command)) {
-                // Create arguments and check for arg bounds if the wrong amount of arguments was provided
-                val commandArgs = CommandArgs(sender, command, label, args)
-                val commandInfo = commands[command]!!
-                // Check for cooldowns
-                if (commandCooldowns.containsKey(command)) {
-                    val cooldown = commandCooldowns[command]!!
-                    // Check if the sender is a player
-                    if (sender is Player) {
-                        //Get the player cooldowns
-                        val playerCooldowns = commandCurrentCooldowns[sender.uniqueId]!!
-                        // Check if the player has a cooldown
-                        if (playerCooldowns.containsKey(command)) {
-                            // Check if the cooldown has expired
-                            if (playerCooldowns[command]!! > System.currentTimeMillis()) {
-                                // If not, send the player a message and return
-                                sender.sendMessage("${ChatColor.RED}${cooldown.second}")
-                                return true
-                            }
+            if (commands.containsKey(command)) performChecksAndExecuteCommand(sender, command, label, args)
+        }
+        return true
+    }
+
+    private fun performChecksAndExecuteSubcommand(
+        command: Command,
+        args: Array<out String>,
+        sender: CommandSender
+    ) {
+        if (!subcommands[command]!!.containsKey(args[0])) {
+            sender.sendMessage(MiniMessage.miniMessage().deserialize("<red>Invalid subcommand!"))
+            return
+        }
+        val subcommand = subcommands[command]!![args[0]]!!
+        // Denotes whether this subcommand has its own cooldown or not
+        // If it doesn't, it will inherit the cooldown from the parent command
+        var doesHaveSubcommandCooldown = subcommandCooldowns.containsKey(command)
+        if (doesHaveSubcommandCooldown) {
+            val cooldown = subcommandCooldowns[command]!![args[0]]
+            // Check if the sender is a player
+            if (sender is Player) {
+                if (cooldown != null) {
+                    //Get the player cooldowns
+                    if (!subcommandCurrentCooldowns.containsKey(sender.uniqueId)) {
+                        subcommandCurrentCooldowns[sender.uniqueId] =
+                            mutableMapOf(command to mutableMapOf())
+                    }
+                    val playerCooldowns = subcommandCurrentCooldowns[sender.uniqueId]!![command]!!
+                    // Check if the player has a cooldown
+                    if (playerCooldowns.containsKey(subcommand.first.name)) {
+                        // Check if the cooldown has expired
+                        if (playerCooldowns[subcommand.first.name]!! > System.currentTimeMillis()) {
+                            sender.sendMessage(
+                                MiniMessage.miniMessage().deserialize("<red>${cooldown.second}")
+                            )
+                            return
                         }
-                        // If the player doesn't have a cooldown, add one
-                        playerCooldowns[command] = System.currentTimeMillis() + cooldown.first
                     }
-                }
-                if (commandArgBounds.containsKey(command)) {
-                    val bounds = commandArgBounds[command]!!
-                    if (args.size < bounds.first || args.size > bounds.second) {
-                        sender.sendMessage("${ChatColor.RED}${bounds.third}")
-                        return true
-                    }
-                }
-                // Check permissions
-                if (!commandPermissions.containsKey(command) || permissionCheck(
-                        sender,
-                        commandPermissions[command]!!
-                    )
-                ) {
-                    JavaAccessor.invoke(commandInfo.second, commandInfo.first, commandArgs)
+                    // If the player doesn't have a cooldown, add one
+                    playerCooldowns[subcommand.first.name] = System.currentTimeMillis() + cooldown.first
+                } else {
+                    doesHaveSubcommandCooldown = false
                 }
             }
         }
-        return true
+        // If not then inherit the parent's cooldown
+        if (!doesHaveSubcommandCooldown && commandCooldowns.containsKey(command) && sender is Player) {
+            if (handleCommandCooldowns(command, sender)) return
+        }
+
+        // Check for arg bounds if the wrong amount of arguments was provided
+        if (subcommandArgBounds.containsKey(command)) {
+            if (subcommandArgBounds[command]!!.containsKey(args[0])) {
+                val bounds = subcommandArgBounds[command]!![args[0]]!!
+                if (args.size - 1 < bounds.first || args.size - 1 > bounds.second) {
+                    sender.sendMessage(MiniMessage.miniMessage().deserialize("<red>${bounds.third}"))
+                    return
+                }
+            }
+        }
+        val commandArgs =
+            CommandArgs(sender, subcommand.first, args[0], args.slice(1 until args.size).toTypedArray())
+        // Check permissions
+        if (
+            !subcommandPermissions.containsKey(command) ||
+            !subcommandPermissions[command]!!.containsKey(subcommand.first.name) ||
+            permissionCheck(sender, subcommandPermissions[command]!![subcommand.first.name]!!)
+        ) {
+            // Execute the subcommand
+            subcommand.second.invoke(subcommand.third, commandArgs)
+        }
+    }
+
+    private fun performChecksAndExecuteCommand(
+        sender: CommandSender,
+        command: Command,
+        label: String,
+        args: Array<out String>
+    ) {
+        performChecksAndExecuteCommand(
+            command,
+            args,
+            sender,
+            commands[command]!!,
+            CommandArgs(sender, command, label, args)
+        )
+    }
+
+    private fun performChecksAndExecuteCommand(
+        command: Command,
+        args: Array<out String>,
+        sender: CommandSender,
+        commandInfo: Pair<Method, Any>,
+        commandArgs: CommandArgs
+    ) {
+        // Check for cooldowns
+        if (commandCooldowns.containsKey(command) && sender is Player) {
+            if (handleCommandCooldowns(command, sender)) return
+        }
+        // Check for arg bounds if the wrong amount of arguments was provided
+        if (commandArgBounds.containsKey(command)) {
+            val bounds = commandArgBounds[command]!!
+            if (args.size < bounds.first || args.size > bounds.second) {
+                sender.sendMessage(MiniMessage.miniMessage().deserialize("<red>${bounds.third}"))
+                return
+            }
+        }
+        // Check permissions
+        if (!commandPermissions.containsKey(command) || permissionCheck(
+                sender,
+                commandPermissions[command]!!
+            )
+        ) {
+            JavaAccessor.invoke(commandInfo.second, commandInfo.first, commandArgs)
+        }
     }
 
     private fun handleCommandCooldowns(command: Command, sender: Player): Boolean {
@@ -398,19 +389,20 @@ class CommandManager(plugin: Plugin) : CommandExecutor, TabCompleter {
         if (!commandCurrentCooldowns.containsKey(sender.uniqueId)) {
             commandCurrentCooldowns[sender.uniqueId] = mutableMapOf(command to 0)
         }
+        //Get the player cooldowns
         val playerCooldowns = commandCurrentCooldowns[sender.uniqueId]!!
         // Check if the player has a cooldown
         if (playerCooldowns.containsKey(command)) {
             // Check if the cooldown has expired
             if (playerCooldowns[command]!! > System.currentTimeMillis()) {
                 // If not, send the player a message and return
-                sender.sendMessage("${ChatColor.RED}${parentCooldown.second}")
+                sender.sendMessage(MiniMessage.miniMessage().deserialize("<red>${parentCooldown.second}"))
                 return true
             }
         }
         // If the player doesn't have a cooldown, add one
         playerCooldowns[command] = System.currentTimeMillis() + parentCooldown.first
-        return false
+        return false;
     }
 
     override fun onTabComplete(
