@@ -125,7 +125,7 @@ class CommandManager(plugin: Plugin) : CommandExecutor, TabCompleter {
         pluginCommand.tabCompleter = this
         // Add the command to the commands map
         commands[pluginCommand] = Pair(method, objInst)
-        commandMap?.register(mainPlugin.description.name, pluginCommand)
+        commandMap?.register(mainPlugin.name, pluginCommand)
         // Register the command's other annotations
         registerCommandArgLengthBounds(method, pluginCommand)
         registerCommandPermissions(method, pluginCommand)
