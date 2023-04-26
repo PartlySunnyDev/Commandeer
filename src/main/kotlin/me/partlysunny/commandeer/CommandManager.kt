@@ -9,6 +9,7 @@ import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
 import java.lang.reflect.Method
 import java.util.*
+import java.util.logging.Level
 import java.util.stream.Collectors
 import me.partlysunny.commandeer.annotations.Command as CustomCommand
 
@@ -86,8 +87,8 @@ class CommandManager(plugin: Plugin) : CommandExecutor, TabCompleter {
         val parentCommand = mainPlugin.server.getPluginCommand(subcommand.parent)
         // If parent command is null, throw an exception
         if (parentCommand == null) {
-            //ConsoleLogger.error("Issue registering subcommand ${subcommand.commandName}! Parent command ${subcommand.parent} does not exist!")
-            //ConsoleLogger.error("Possible fix: Make sure the parent command is registered before the subcommand!")
+            mainPlugin.logger.log(Level.SEVERE, "Issue registering subcommand ${subcommand.commandName}! Parent command ${subcommand.parent} does not exist!")
+            mainPlugin.logger.log(Level.SEVERE, "Possible fix: Make sure the parent command is registered before the subcommand!")
             return true
         }
         // Add the subcommand to the subcommands map
