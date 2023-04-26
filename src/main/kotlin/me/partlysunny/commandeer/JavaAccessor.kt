@@ -10,7 +10,7 @@ import java.util.*
 /*
  * NOT BY ME!!! https://gist.github.com/Lauriichan/294c64b63067dcb6a9a8658f2d040256
  * */
-class JavaAccessor private constructor() {
+internal class JavaAccessor private constructor() {
     private val unsuccessful: AccessUnsuccessful = AccessUnsuccessful
     private var unsafe: Unsafe? = null
     private var lookup: Lookup? = null

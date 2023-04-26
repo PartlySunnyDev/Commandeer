@@ -3,7 +3,7 @@ package me.partlysunny.commandeer
 /**
  * NOT BY ME!!! [https://gist.github.com/Lauriichan/294c64b63067dcb6a9a8658f2d040256](https://gist.github.com/Lauriichan/294c64b63067dcb6a9a8658f2d040256)
  */
-class JavaTracker private constructor() {
+internal class JavaTracker private constructor() {
     init {
         throw UnsupportedOperationException("Utility class")
     }
